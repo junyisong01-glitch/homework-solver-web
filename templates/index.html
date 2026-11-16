@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 数学解题助手</title>
+<style>
+  :root { --bg:#f6f7fb; --card:#ffffff; --ink:#1a1d29; --sub:#5b6172; --accent:#4f6ef7; --ok:#1f9d55; --warn:#b7791f; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+  .wrap { max-width:760px; margin:0 auto; padding:24px 16px 60px; }
+  header h1 { font-size:22px; margin-bottom:4px; }
+  header p { color:var(--sub); font-size:14px; }
+  .card { background:var(--card); border-radius:14px; padding:18px; margin-top:16px; box-shadow:0 1px 4px rgba(20,25,50,.06); }
+  label { display:block; font-size:14px; font-weight:600; margin-bottom:8px; }
+  textarea { width:100%; min-height:110px; border:1px solid #d9dcea; border-radius:10px; padding:12px; font-size:15px; font-family:inherit; resize:vertical; }
+  .row { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  select { flex:1; min-width:140px; border:1px solid #d9dcea; border-radius:10px; padding:11px; font-size:14px; background:#fff; }
+  button { background:var(--accent); color:#fff; border:none; border-radius:10px; padding:11px 22px; font-size:15px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.55; cursor:not-allowed; }
+  .hint { font-size:12px; color:var(--sub); margin-top:8px; line-height:1.6; }
+  .result { margin-top:16px; display:none; }
+  .result.show { display:block; }
+  .badge { display:inline-block; font-size:12px; padding:3px 10px; border-radius:999px; margin-bottom:10px; }
+  .badge.demo { background:#fff4e0; color:var(--warn); }
+  .badge.ai { background:#e7f7ee; color:var(--ok); }
+  .answer { line-height:1.7; font-size:15px; word-break:break-word; }
+  .verify { margin-top:14px; padding-top:14px; border-top:1px dashed #e3e6ef; font-size:13px; color:var(--sub); }
+  .verify strong { color:var(--ink); }
+  code { background:#f0f2f8; padding:1px 6px; border-radius:6px; font-family:ui-monospace,Menlo,monospace; font-size:13px; }
+  footer { text-align:center; color:#9aa0b4; font-size:12px; margin-top:28px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧮 AI 数学解题助手</h1>
+    <p>输入一道题，AI 分步骤讲解，符号引擎复核答案</p>
+  </header>
+
+  <div class="card">
+    <label for="problem">你的题目</label>
+    <textarea id="problem" placeholder="例：求 lim(x→0) sin(x)/x 的极限，并说明为什么。&#10;也可以直接贴：lim(x->0, sin(x)/x)"></textarea>
+    <div class="row">
+      <select id="subject">
+        <option value="">题型（可选）</option>
+        <option>微积分 · 极限</option>
+        <option>微积分 · 求导</option>
+        <option>微积分 · 积分</option>
+        <option>线性代数</option>
+        <option>方程求解</option>
+        <option>其他</option>
+      </select>
+      <button id="go" onclick="solve()">求解</button>
+    </div>
+    <div class="hint">符号复核支持 4 种简写：<code>lim(x-&gt;0, sin(x)/x)</code>、<code>diff(x^2)</code>、<code>int(x^2)</code>、<code>solve(x^2-4)</code>。AI 讲解可处理任意自然语言题目。</div>
+  </div>
+
+  <div class="card result" id="result">
+    <span class="badge" id="badge"></span>
+    <div class="answer" id="answer"></div>
+    <div class="verify" id="verify"></div>
+  </div>
+
+  <footer>AI 生成内容仅供学习参考，重要结论请自行复核。</footer>
+</div>
+
+<script>
+function solve() {
+  const problem = document.getElementById('problem').value.trim();
+  if (!problem) { alert('请先输入题目'); return; }
+  const go = document.getElementById('go');
+  go.disabled = true; go.textContent = '求解中…';
+  const subject = document.getElementById('subject').value;
+
+  fetch('/api/solve', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ problem, subject })
+  })
+  .then(r => r.json())
+  .then(d => {
+    const result = document.getElementById('result');
+    const badge = document.getElementById('badge');
+    const answer = document.getElementById('answer');
+    const verify = document.getElementById('verify');
+    result.classList.add('show');
+
+    if (!d.ok) { badge.textContent = '出错了'; badge.className = 'badge demo'; answer.textContent = d.error || '未知错误'; verify.innerHTML = ''; return; }
+
+    if (d.ai_available) {
+      badge.textContent = 'AI 讲解';
+      badge.className = 'badge ai';
+      answer.textContent = d.ai_answer || '（空）';
+    } else {
+      badge.textContent = '演示模式（未配置 AI Key）';
+      badge.className = 'badge demo';
+      answer.textContent = '当前为本地符号演示，未接入大模型。配置 DEEPSEEK_API_KEY 后即可获得 AI 分步骤讲解。';
+    }
+
+    if (d.sympy_verify) {
+      verify.innerHTML = '✅ 符号复核：<strong>' + d.sympy_verify.method + '</strong> → ' + d.sympy_verify.answer;
+    } else {
+      verify.innerHTML = '（此题未命中符号复核模板，仅返回 AI 讲解）';
+    }
+  })
+  .catch(e => {
+    const result = document.getElementById('result');
+    result.classList.add('show');
+    document.getElementById('badge').textContent = '请求失败';
+    document.getElementById('badge').className = 'badge demo';
+    document.getElementById('answer').textContent = String(e);
+    document.getElementById('verify').innerHTML = '';
+  })
+  .finally(() => {
+    go.disabled = false; go.textContent = '求解';
+  });
+}
+</script>
+</body>
+</html>

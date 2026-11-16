@@ -1,0 +1,4 @@
+# Core dependencies
+flask>=2.3
+requests>=2.31
+sympy>=1.12
